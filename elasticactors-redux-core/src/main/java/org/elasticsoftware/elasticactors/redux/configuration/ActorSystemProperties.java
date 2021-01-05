@@ -15,22 +15,18 @@ public interface ActorSystemProperties {
     String getDomain();
 
     default String getClusterName() {
-        String fullName = getName().trim();
+        StringBuilder sb = new StringBuilder(getName());
         String environment = getEnvironment();
-        if (environment != null) {
-            environment = environment.trim();
-        }
         String domainName = getDomain();
-        if (domainName != null) {
-            domainName = domainName.trim();
-        }
         if (environment != null && !environment.isEmpty()) {
-            fullName += "." + environment;
+            sb.append(".");
+            sb.append(environment);
         }
         if (domainName != null && !domainName.isEmpty()) {
-            fullName += "." + domainName;
+            sb.append(".");
+            sb.append(domainName);
         }
-        return fullName;
+        return sb.toString();
     }
 
 }
