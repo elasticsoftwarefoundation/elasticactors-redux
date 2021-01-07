@@ -6,12 +6,5 @@ public interface ActorSystem {
 
     String getName();
 
-    ActorRef getActor(String actorId);
-
     ActorRef getServiceActor(String actorId);
-
-    void destroy(ActorRef actor);
-
-    ActorRef aliasFor(ActorRef aliasedActor, String aliasId);
-
 }

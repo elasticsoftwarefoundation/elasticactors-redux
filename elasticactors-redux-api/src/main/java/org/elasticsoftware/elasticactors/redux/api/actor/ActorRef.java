@@ -6,7 +6,11 @@ public interface ActorRef {
 
     String getActorId();
 
+    String getSpec();
+
     ActorSystem getActorSystem();
 
     void send(Object message);
+
+    void sendAnonymous(Object message);
 }

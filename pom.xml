@@ -16,6 +16,9 @@
     <modules>
         <module>elasticactors-redux-api</module>
         <module>elasticactors-redux-core</module>
+        <module>elasticactors-redux-spi</module>
+        <module>elasticactors-redux-vnode</module>
+        <module>elasticactors-redux-vnode-shard</module>
     </modules>
 
     <properties>
