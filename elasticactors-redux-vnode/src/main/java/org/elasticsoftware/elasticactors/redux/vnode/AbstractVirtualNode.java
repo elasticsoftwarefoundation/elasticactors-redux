@@ -55,4 +55,9 @@ public abstract class AbstractVirtualNode implements VirtualNode {
     public String getSpec() {
         return key.getSpec();
     }
+
+    @Override
+    public String toString() {
+        return key.toString();
+    }
 }

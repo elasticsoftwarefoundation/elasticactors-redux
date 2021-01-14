@@ -4,5 +4,9 @@ import org.elasticsoftware.elasticactors.redux.api.actor.ActorRef;
 
 public interface ActorContext {
 
-    ActorRef current();
+    ActorRef getSelf();
+
+    <T> T getState(Class<T> stateClass);
+
+    <T> void setState(T object, Class<T> stateClass);
 }
