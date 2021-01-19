@@ -15,7 +15,7 @@ public final class TestVirtualNode implements VirtualNode {
     private final VirtualNodeKey key;
 
     public TestVirtualNode(int index) {
-        this.key = new VirtualNodeKey("test", "test-node-" + index);
+        this.key = new VirtualNodeKey("test", "test" + index);
     }
 
     public TestVirtualNode() {

@@ -6,12 +6,13 @@ import org.apache.commons.codec.digest.MurmurHash3;
 import java.nio.charset.StandardCharsets;
 
 @RequiredArgsConstructor
-public final class ActorToShardHasher {
+public final class ActorToShardConsistentHash {
 
-    private final int shards;
+    private final int numShards;
 
     public int getShard(String actorId) {
-        byte[] key = actorId.getBytes(StandardCharsets.UTF_8);
-        return Math.abs(MurmurHash3.hash32x86(key, 0, key.length, 0)) % shards;
+        byte[] bytes = actorId.getBytes(StandardCharsets.UTF_8);
+        int hash = MurmurHash3.hash32x86(bytes, 0, bytes.length, 0);
+        return Math.abs(hash) % numShards;
     }
 }
