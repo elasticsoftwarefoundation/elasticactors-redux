@@ -15,7 +15,9 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 public abstract class AbstractLocalVirtualNode extends AbstractVirtualNode {
 
+    protected final String queueName;
     protected final RabbitAdmin rabbitAdmin;
+    protected final DirectExchange clusterExchange;
 
     protected AbstractLocalVirtualNode(
             ActorSystemProperties actorSystemProperties,
@@ -31,13 +33,13 @@ public abstract class AbstractLocalVirtualNode extends AbstractVirtualNode {
                 internalMessageFactory,
                 internalMessageConverter);
         this.rabbitAdmin = rabbitAdmin;
+        String clusterName = actorSystemProperties.getClusterName();
+        this.queueName = String.format(QUEUE_FORMAT, clusterName, key.getSpec());
+        this.clusterExchange = ExchangeBuilder.directExchange(clusterExchangeName).build();
     }
 
     @Override
     public void init() {
-        DirectExchange clusterExchange = ExchangeBuilder.directExchange(clusterExchangeName).build();
-        rabbitAdmin.declareExchange(clusterExchange);
-
         QueueBuilder queueBuilder = QueueBuilder.durable(queueName);
 
         int expire = virtualNodeProperties.getQueue().getExpire();
@@ -48,12 +50,14 @@ public abstract class AbstractLocalVirtualNode extends AbstractVirtualNode {
             queueBuilder.singleActiveConsumer();
         }
 
+        rabbitAdmin.declareExchange(clusterExchange);
+
         Queue virtualNodeQueue = queueBuilder.build();
         rabbitAdmin.declareQueue(virtualNodeQueue);
 
         Binding binding = BindingBuilder.bind(virtualNodeQueue)
                 .to(clusterExchange)
-                .with(getKey().getSpec());
+                .with(key.getSpec());
         rabbitAdmin.declareBinding(binding);
     }
 

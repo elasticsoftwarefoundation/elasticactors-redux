@@ -1,42 +1,42 @@
 package org.elasticsoftware.elasticactors.redux.shard;
 
-import lombok.Getter;
-import org.elasticsoftware.elasticactors.redux.api.actor.ActorRef;
 import org.elasticsoftware.elasticactors.redux.configuration.ActorSystemProperties;
-import org.elasticsoftware.elasticactors.redux.system.ActorContainer;
+import org.elasticsoftware.elasticactors.redux.messaging.InternalMessageConverter;
+import org.elasticsoftware.elasticactors.redux.messaging.InternalMessageFactory;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
-public final class Shard implements ActorContainer {
+public final class LocalShard extends AbstractShard {
 
-    private static final String QUEUE_FORMAT = "%s/%s";
-
-    @Getter
-    private final ShardKey key;
+    private final RabbitAdmin rabbitAdmin;
     private final DirectExchange clusterExchange;
     private final Queue shardQueue;
 
-    public Shard(
+    public LocalShard(
             int shardId,
             ActorSystemProperties actorSystemProperties,
+            RabbitTemplate rabbitTemplate,
+            InternalMessageFactory internalMessageFactory,
+            InternalMessageConverter internalMessageConverter,
             DirectExchange clusterExchange,
             RabbitAdmin rabbitAdmin) {
+        super(
+                shardId,
+                actorSystemProperties,
+                rabbitTemplate,
+                internalMessageFactory,
+                internalMessageConverter);
+        this.rabbitAdmin = rabbitAdmin;
         this.clusterExchange = clusterExchange;
-        this.key = new ShardKey(actorSystemProperties.getName(), shardId);
 
         String clusterName = actorSystemProperties.getClusterName();
         String queueName = String.format(QUEUE_FORMAT, clusterName, key.getSpec());
         this.shardQueue = QueueBuilder.durable(queueName).build();
-        rabbitAdmin.declareQueue(shardQueue);
-
-        Binding binding = BindingBuilder.bind(shardQueue)
-                .to(clusterExchange)
-                .with(key.getSpec());
-        rabbitAdmin.declareBinding(binding);
     }
 
     public synchronized void startListening() {
@@ -50,19 +50,18 @@ public final class Shard implements ActorContainer {
         // TODO ensure release of the cache
     }
 
-    public void send(Object message) {
-        // TODO send messages to this shard's queue
-        // TODO handle transient and persistent messages
+    @Override
+    public void init() {
+        rabbitAdmin.declareQueue(shardQueue);
+
+        Binding binding = BindingBuilder.bind(shardQueue)
+                .to(clusterExchange)
+                .with(key.getSpec());
+        rabbitAdmin.declareBinding(binding);
     }
 
     @Override
-    public String getSpec() {
-        return key.getSpec();
-    }
-
-    @Override
-    public void send(
-            ActorRef sender, ActorRef receiver, Object message) {
+    public void destroy() {
 
     }
 }

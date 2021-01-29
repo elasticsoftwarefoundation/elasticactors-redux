@@ -1,20 +1,18 @@
-package org.elasticsoftware.elasticactors.redux.vnode;
+package org.elasticsoftware.elasticactors.redux.shard;
 
 import org.elasticsoftware.elasticactors.redux.configuration.ActorSystemProperties;
-import org.elasticsoftware.elasticactors.redux.configuration.VirtualNodeProperties;
 import org.elasticsoftware.elasticactors.redux.messaging.InternalMessageConverter;
 import org.elasticsoftware.elasticactors.redux.messaging.InternalMessageFactory;
 import org.elasticsoftware.elasticactors.redux.system.AbstractActorContainer;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
-public abstract class AbstractVirtualNode extends AbstractActorContainer implements VirtualNode {
+public abstract class AbstractShard extends AbstractActorContainer implements Shard {
 
-    protected final VirtualNodeProperties virtualNodeProperties;
-    protected final VirtualNodeKey key;
+    protected final ShardKey key;
 
-    protected AbstractVirtualNode(
+    protected AbstractShard(
+            int shardId,
             ActorSystemProperties actorSystemProperties,
-            VirtualNodeProperties virtualNodeProperties,
             RabbitTemplate rabbitTemplate,
             InternalMessageFactory internalMessageFactory,
             InternalMessageConverter internalMessageConverter) {
@@ -23,14 +21,11 @@ public abstract class AbstractVirtualNode extends AbstractActorContainer impleme
                 rabbitTemplate,
                 internalMessageFactory,
                 internalMessageConverter);
-        this.virtualNodeProperties = virtualNodeProperties;
-        this.key = new VirtualNodeKey(
-                actorSystemProperties.getName(),
-                virtualNodeProperties.getNodeId());
+        this.key = new ShardKey(actorSystemProperties.getName(), shardId);
     }
 
     @Override
-    public final VirtualNodeKey getKey() {
+    public final ShardKey getKey() {
         return key;
     }
 

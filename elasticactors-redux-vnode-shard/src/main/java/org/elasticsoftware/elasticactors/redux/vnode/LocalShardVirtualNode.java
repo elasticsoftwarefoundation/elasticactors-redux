@@ -4,19 +4,22 @@ import org.elasticsoftware.elasticactors.redux.configuration.ActorSystemProperti
 import org.elasticsoftware.elasticactors.redux.configuration.ShardVirtualNodeProperties;
 import org.elasticsoftware.elasticactors.redux.messaging.InternalMessageConverter;
 import org.elasticsoftware.elasticactors.redux.messaging.InternalMessageFactory;
+import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
-public abstract class AbstractShardVirtualNode extends AbstractVirtualNode {
+public final class LocalShardVirtualNode extends AbstractLocalVirtualNode {
 
-    protected AbstractShardVirtualNode(
+    public LocalShardVirtualNode(
             ActorSystemProperties actorSystemProperties,
-            ShardVirtualNodeProperties shardVirtualNodeProperties,
+            ShardVirtualNodeProperties virtualNodeProperties,
+            RabbitAdmin rabbitAdmin,
             RabbitTemplate rabbitTemplate,
             InternalMessageFactory internalMessageFactory,
             InternalMessageConverter internalMessageConverter) {
         super(
                 actorSystemProperties,
-                shardVirtualNodeProperties,
+                virtualNodeProperties,
+                rabbitAdmin,
                 rabbitTemplate,
                 internalMessageFactory,
                 internalMessageConverter);

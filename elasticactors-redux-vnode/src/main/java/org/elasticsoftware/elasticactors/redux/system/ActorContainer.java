@@ -5,6 +5,9 @@ import org.springframework.lang.Nullable;
 
 public interface ActorContainer {
 
+    String EXCHANGE_FORMAT = "ea.%s";
+    String QUEUE_FORMAT = "%s/%s";
+
     String getSpec();
 
     void send(@Nullable ActorRef sender, ActorRef receiver, Object message);
