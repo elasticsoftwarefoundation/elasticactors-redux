@@ -26,8 +26,28 @@ public final class Receive<S> {
     @Nullable
     private final MessageBiConsumer<S, Object> postReceiveConsumer;
 
-    public void onReceive(ActorContext<S> actorContext, Object message) {
-
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public void onReceive(ActorContext<S> actorContext, Object message) throws Exception {
+        if (preReceiveConsumer != null) {
+            preReceiveConsumer.accept(actorContext,message);
+        }
+        boolean consumed = false;
+        MessageBiConsumer consumer = onReceiveConsumers.get(message.getClass());
+        if (consumer != null) {
+            consumed = true;
+            consumer.accept(actorContext, message);
+        }
+        if (!consumed) {
+            // look for next appropriate handler based on class hierarchy (?)
+            // consider special case for throwables?
+        }
+        if (!consumed) {
+            if (orElseConsumer != null) {
+                orElseConsumer.accept(actorContext, message);
+            } else {
+                // write onUnhandled
+            }
+        }
     }
 
     public interface BuildStep<S> {
