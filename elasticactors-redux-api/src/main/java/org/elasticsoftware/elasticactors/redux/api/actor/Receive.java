@@ -20,11 +20,15 @@ public final class Receive<S> {
 
     private final Map<Class<?>, MessageBiConsumer<S, ?>> onReceiveConsumers;
     @Nullable
-    private final MessageBiConsumer<S, ?> orElseConsumer;
+    private final MessageBiConsumer<S, Object> orElseConsumer;
     @Nullable
-    private final MessageBiConsumer<S, ?> preReceiveConsumer;
+    private final MessageBiConsumer<S, Object> preReceiveConsumer;
     @Nullable
-    private final MessageBiConsumer<S, ?> postReceiveConsumer;
+    private final MessageBiConsumer<S, Object> postReceiveConsumer;
+
+    public void onReceive(ActorContext<S> actorContext, Object message) {
+
+    }
 
     public interface BuildStep<S> {
 
@@ -33,9 +37,9 @@ public final class Receive<S> {
 
     public interface PreReceiveStep<S> extends MessageHandlingStep<S> {
 
-        <M> MessageHandlingStep<S> preReceive(MessageBiConsumer<S, M> consumer);
+        MessageHandlingStep<S> preReceive(MessageBiConsumer<S, Object> consumer);
 
-        <M> MessageHandlingStep<S> preReceive(MessageConsumer<M> consumer);
+        MessageHandlingStep<S> preReceive(MessageConsumer<Object> consumer);
 
         MessageHandlingStep<S> preReceive(MessageRunnable runnable);
     }
@@ -48,18 +52,18 @@ public final class Receive<S> {
 
         <M> MessageHandlingStep<S> onReceive(Class<M> tClass, MessageRunnable runnable);
 
-        <M> PostReceiveStep<S> orElse(MessageBiConsumer<S, M> consumer);
+        PostReceiveStep<S> orElse(MessageBiConsumer<S, Object> consumer);
 
-        <M> PostReceiveStep<S> orElse(MessageConsumer<M> consumer);
+        PostReceiveStep<S> orElse(MessageConsumer<Object> consumer);
 
         PostReceiveStep<S> orElse(MessageRunnable runnable);
     }
 
     public interface PostReceiveStep<S> extends BuildStep<S> {
 
-        <M> BuildStep<S> postReceive(MessageBiConsumer<S, M> consumer);
+        BuildStep<S> postReceive(MessageBiConsumer<S, Object> consumer);
 
-        <M> BuildStep<S> postReceive(MessageConsumer<M> consumer);
+        BuildStep<S> postReceive(MessageConsumer<Object> consumer);
 
         BuildStep<S> postReceive(MessageRunnable runnable);
     }
@@ -70,11 +74,11 @@ public final class Receive<S> {
         private final Map<Class<?>, MessageBiConsumer<S, ?>> onReceiveConsumers =
                 new LinkedHashMap<>();
         @Nullable
-        private MessageBiConsumer<S, ?> orElseConsumer;
+        private MessageBiConsumer<S, Object> orElseConsumer;
         @Nullable
-        private MessageBiConsumer<S, ?> preReceiveConsumer;
+        private MessageBiConsumer<S, Object> preReceiveConsumer;
         @Nullable
-        private MessageBiConsumer<S, ?> postReceiveConsumer;
+        private MessageBiConsumer<S, Object> postReceiveConsumer;
         private boolean built = false;
 
         @Override
@@ -91,7 +95,7 @@ public final class Receive<S> {
         }
 
         @Override
-        public <M> MessageHandlingStep<S> preReceive(MessageBiConsumer<S, M> consumer) {
+        public MessageHandlingStep<S> preReceive(MessageBiConsumer<S, Object> consumer) {
             Objects.requireNonNull(consumer);
             if (this.preReceiveConsumer != null) {
                 throw new IllegalStateException("preReceive is already set");
@@ -101,9 +105,9 @@ public final class Receive<S> {
         }
 
         @Override
-        public <M> MessageHandlingStep<S> preReceive(MessageConsumer<M> consumer) {
+        public MessageHandlingStep<S> preReceive(MessageConsumer<Object> consumer) {
             Objects.requireNonNull(consumer);
-            return this.<M>preReceive((c, m) -> consumer.accept(m));
+            return this.preReceive((c, m) -> consumer.accept(m));
         }
 
         @Override
@@ -142,7 +146,7 @@ public final class Receive<S> {
         }
 
         @Override
-        public <M> PostReceiveStep<S> orElse(MessageBiConsumer<S, M> consumer) {
+        public PostReceiveStep<S> orElse(MessageBiConsumer<S, Object> consumer) {
             Objects.requireNonNull(consumer);
             if (this.orElseConsumer != null) {
                 throw new IllegalStateException("orElse is already set");
@@ -152,9 +156,9 @@ public final class Receive<S> {
         }
 
         @Override
-        public <M> PostReceiveStep<S> orElse(MessageConsumer<M> consumer) {
+        public PostReceiveStep<S> orElse(MessageConsumer<Object> consumer) {
             Objects.requireNonNull(consumer);
-            return this.<M>orElse((a, m) -> consumer.accept(m));
+            return orElse((a, m) -> consumer.accept(m));
         }
 
         @Override
@@ -164,7 +168,7 @@ public final class Receive<S> {
         }
 
         @Override
-        public <M> BuildStep<S> postReceive(MessageBiConsumer<S, M> consumer) {
+        public BuildStep<S> postReceive(MessageBiConsumer<S, Object> consumer) {
             Objects.requireNonNull(consumer);
             if (this.postReceiveConsumer != null) {
                 throw new IllegalStateException("postReceive is already set");
@@ -174,9 +178,9 @@ public final class Receive<S> {
         }
 
         @Override
-        public <M> BuildStep<S> postReceive(MessageConsumer<M> consumer) {
+        public BuildStep<S> postReceive(MessageConsumer<Object> consumer) {
             Objects.requireNonNull(consumer);
-            return this.<M>postReceive((a, m) -> consumer.accept(m));
+            return postReceive((a, m) -> consumer.accept(m));
         }
 
         @Override
