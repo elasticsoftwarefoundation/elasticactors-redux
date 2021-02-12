@@ -1,12 +1,17 @@
 package org.elasticsoftware.elasticactors.redux.api.context;
 
 import org.elasticsoftware.elasticactors.redux.api.actor.ActorRef;
+import org.elasticsoftware.elasticactors.redux.api.system.ActorSystem;
 
-public interface ActorContext {
+public interface ActorContext<S> {
 
     ActorRef getSelf();
 
-    <T> T getState(Class<T> stateClass);
+    default ActorSystem getSystem() {
+        return getSelf().getActorSystem();
+    }
 
-    <T> void setState(T object, Class<T> stateClass);
+    S getState();
+
+    void setState(S object);
 }
