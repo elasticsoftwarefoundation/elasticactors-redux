@@ -3,6 +3,7 @@ package org.elasticsoftware.elasticactors.redux.api.actor;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.elasticsoftware.elasticactors.redux.api.context.ActorContext;
 import org.springframework.lang.Nullable;
 
@@ -11,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
+@Slf4j
 @AllArgsConstructor
 public final class Receive<S> {
 
@@ -19,7 +21,6 @@ public final class Receive<S> {
     }
 
     private final Map<Class<?>, MessageBiConsumer<S, ?>> onReceiveConsumers;
-    @Nullable
     private final MessageBiConsumer<S, Object> orElseConsumer;
     @Nullable
     private final MessageBiConsumer<S, Object> preReceiveConsumer;
@@ -34,19 +35,15 @@ public final class Receive<S> {
         boolean consumed = false;
         MessageBiConsumer consumer = onReceiveConsumers.get(message.getClass());
         if (consumer != null) {
-            consumed = true;
             consumer.accept(actorContext, message);
+            consumed = true;
         }
         if (!consumed) {
             // look for next appropriate handler based on class hierarchy (?)
             // consider special case for throwables?
         }
         if (!consumed) {
-            if (orElseConsumer != null) {
-                orElseConsumer.accept(actorContext, message);
-            } else {
-                // write onUnhandled
-            }
+            orElseConsumer.accept(actorContext, message);
         }
     }
 
@@ -93,12 +90,18 @@ public final class Receive<S> {
 
         private final Map<Class<?>, MessageBiConsumer<S, ?>> onReceiveConsumers =
                 new LinkedHashMap<>();
-        @Nullable
-        private MessageBiConsumer<S, Object> orElseConsumer;
+
+        private MessageBiConsumer<S, Object> orElseConsumer = (c, m) -> log.warn(
+                "Actor '{}' received an unhandled message of type '{}'",
+                c.getSelf().getSpec(),
+                m.getClass().getName());
+
         @Nullable
         private MessageBiConsumer<S, Object> preReceiveConsumer;
         @Nullable
         private MessageBiConsumer<S, Object> postReceiveConsumer;
+
+        private boolean orElseSet = false;
         private boolean built = false;
 
         @Override
@@ -168,9 +171,10 @@ public final class Receive<S> {
         @Override
         public PostReceiveStep<S> orElse(MessageBiConsumer<S, Object> consumer) {
             Objects.requireNonNull(consumer);
-            if (this.orElseConsumer != null) {
+            if (this.orElseSet) {
                 throw new IllegalStateException("orElse is already set");
             }
+            this.orElseSet = true;
             this.orElseConsumer = consumer;
             return this;
         }
