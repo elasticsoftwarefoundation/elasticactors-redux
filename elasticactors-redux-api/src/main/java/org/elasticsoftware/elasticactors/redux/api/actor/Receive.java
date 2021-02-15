@@ -30,20 +30,45 @@ public final class Receive<S> {
     @SuppressWarnings({"rawtypes", "unchecked"})
     public void onReceive(ActorContext<S> actorContext, Object message) throws Exception {
         if (preReceiveConsumer != null) {
-            preReceiveConsumer.accept(actorContext,message);
+            preReceiveConsumer.accept(actorContext, message);
         }
         boolean consumed = false;
-        MessageBiConsumer consumer = onReceiveConsumers.get(message.getClass());
+        Class<?> messageClass = message.getClass();
+        MessageBiConsumer consumer = onReceiveConsumers.get(messageClass);
         if (consumer != null) {
             consumer.accept(actorContext, message);
             consumed = true;
         }
         if (!consumed) {
-            // look for next appropriate handler based on class hierarchy (?)
-            // consider special case for throwables?
+            Class<?> closestClass = null;
+            for (Class<?> c : onReceiveConsumers.keySet()) {
+                if (c.isAssignableFrom(messageClass)) {
+                    if (closestClass == null || closestClass.isAssignableFrom(c)) {
+                        closestClass = c;
+                    } else if (!c.isAssignableFrom(closestClass)) {
+                        log.error(
+                                "Ambiguous handlers for class '{}': it extends both '{}' and "
+                                        + "'{}', but they're not part of the same chain of "
+                                        + "inheritance. Delegating this to orElse.",
+                                messageClass.getName(),
+                                closestClass.getName(),
+                                c.getName());
+                        closestClass = null;
+                        break;
+                    }
+                }
+            }
+            if (closestClass != null) {
+                consumer = onReceiveConsumers.get(closestClass);
+                consumer.accept(actorContext, message);
+                consumed = true;
+            }
         }
         if (!consumed) {
             orElseConsumer.accept(actorContext, message);
+        }
+        if (postReceiveConsumer != null) {
+            postReceiveConsumer.accept(actorContext, message);
         }
     }
 
