@@ -3,8 +3,9 @@ package org.elasticsoftware.elasticactors.redux.api.actor;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
-import org.elasticsoftware.elasticactors.redux.api.context.ActorContext;
+import org.elasticsoftware.elasticactors.redux.api.context.MessageHandlingContext;
 import org.springframework.lang.Nullable;
 
 import java.util.Collections;
@@ -20,23 +21,37 @@ public final class Receive<S> {
         return new Builder<>();
     }
 
-    private final Map<Class<?>, MessageBiConsumer<S, ?>> onReceiveConsumers;
-    private final MessageBiConsumer<S, Object> orElseConsumer;
+    private final Map<Class<?>, ConsumerDefinition<S, ?>> onReceiveConsumers;
+    private final ConsumerDefinition<S, Object> orElseConsumer;
+
     @Nullable
     private final MessageBiConsumer<S, Object> preReceiveConsumer;
     @Nullable
     private final MessageBiConsumer<S, Object> postReceiveConsumer;
 
+    public enum Type {
+        READ_ONLY,
+        READ_WRITE
+    }
+
+    @Value
+    private static class ConsumerDefinition<S, M> {
+        Type type;
+        MessageBiConsumer<S, M> consumer;
+    }
+
     @SuppressWarnings({"rawtypes", "unchecked"})
-    public void onReceive(ActorContext<S> actorContext, Object message) throws Exception {
+    public Type onReceive(MessageHandlingContext<S> messageHandlingContext, Object message) throws Exception {
+        Type consumerType = Type.READ_ONLY;
         if (preReceiveConsumer != null) {
-            preReceiveConsumer.accept(actorContext, message);
+            preReceiveConsumer.accept(messageHandlingContext, message);
         }
         boolean consumed = false;
         Class<?> messageClass = message.getClass();
-        MessageBiConsumer consumer = onReceiveConsumers.get(messageClass);
-        if (consumer != null) {
-            consumer.accept(actorContext, message);
+        ConsumerDefinition consumerDefinition = onReceiveConsumers.get(messageClass);
+        if (consumerDefinition != null) {
+            consumerDefinition.getConsumer().accept(messageHandlingContext, message);
+            consumerType = consumerDefinition.getType();
             consumed = true;
         }
         if (!consumed) {
@@ -59,17 +74,20 @@ public final class Receive<S> {
                 }
             }
             if (closestClass != null) {
-                consumer = onReceiveConsumers.get(closestClass);
-                consumer.accept(actorContext, message);
+                consumerDefinition = onReceiveConsumers.get(closestClass);
+                consumerDefinition.getConsumer().accept(messageHandlingContext, message);
+                consumerType = consumerDefinition.getType();
                 consumed = true;
             }
         }
         if (!consumed) {
-            orElseConsumer.accept(actorContext, message);
+            orElseConsumer.getConsumer().accept(messageHandlingContext, message);
+            consumerType = orElseConsumer.getType();
         }
         if (postReceiveConsumer != null) {
-            postReceiveConsumer.accept(actorContext, message);
+            postReceiveConsumer.accept(messageHandlingContext, message);
         }
+        return consumerType;
     }
 
     public interface BuildStep<S> {
@@ -88,11 +106,18 @@ public final class Receive<S> {
 
     public interface MessageHandlingStep<S> extends PostReceiveStep<S> {
 
+        <M> MessageHandlingStep<S> onReceive(
+                Class<M> tClass,
+                Type type,
+                MessageBiConsumer<S, M> consumer);
+
         <M> MessageHandlingStep<S> onReceive(Class<M> tClass, MessageBiConsumer<S, M> consumer);
 
         <M> MessageHandlingStep<S> onReceive(Class<M> tClass, MessageConsumer<M> consumer);
 
         <M> MessageHandlingStep<S> onReceive(Class<M> tClass, MessageRunnable runnable);
+
+        PostReceiveStep<S> orElse(Type type, MessageBiConsumer<S, Object> consumer);
 
         PostReceiveStep<S> orElse(MessageBiConsumer<S, Object> consumer);
 
@@ -113,13 +138,21 @@ public final class Receive<S> {
     @NoArgsConstructor(access = AccessLevel.PRIVATE)
     public final static class Builder<S> implements PreReceiveStep<S> {
 
-        private final Map<Class<?>, MessageBiConsumer<S, ?>> onReceiveConsumers =
+        private final Map<Class<?>, ConsumerDefinition<S, ?>> onReceiveConsumers =
                 new LinkedHashMap<>();
 
-        private MessageBiConsumer<S, Object> orElseConsumer = (c, m) -> log.warn(
-                "Actor '{}' received an unhandled message of type '{}'",
-                c.getSelf().getSpec(),
-                m.getClass().getName());
+        private final static ConsumerDefinition<?, Object> DEFAULT_OR_ELSE =
+                new ConsumerDefinition<>(
+                        Type.READ_ONLY,
+                        (c, m) -> log.warn(
+                                "Actor '{}' received an unhandled message of type '{}'",
+                                c.getSelf().getSpec(),
+                                m.getClass().getName()));
+
+
+        @SuppressWarnings("unchecked")
+        private ConsumerDefinition<S, Object> orElseConsumer =
+                (ConsumerDefinition<S, Object>) DEFAULT_OR_ELSE;
 
         @Nullable
         private MessageBiConsumer<S, Object> preReceiveConsumer;
@@ -167,15 +200,31 @@ public final class Receive<S> {
         @Override
         public <M> MessageHandlingStep<S> onReceive(
                 Class<M> tClass,
+                Type type,
+                MessageBiConsumer<S, M> consumer) {
+            return addConsumer(tClass, type, consumer);
+        }
+
+        @Override
+        public <M> MessageHandlingStep<S> onReceive(
+                Class<M> tClass,
+                MessageBiConsumer<S, M> consumer) {
+            return addConsumer(tClass, Type.READ_WRITE, consumer);
+        }
+
+        private <M> Builder<S> addConsumer(
+                Class<M> tClass,
+                Type type,
                 MessageBiConsumer<S, M> consumer) {
             Objects.requireNonNull(tClass);
+            Objects.requireNonNull(type);
             Objects.requireNonNull(consumer);
             if (onReceiveConsumers.containsKey(tClass)) {
                 throw new IllegalStateException(String.format(
                         "onReceive for class '%s' already set",
                         tClass.getName()));
             }
-            onReceiveConsumers.put(tClass, consumer);
+            onReceiveConsumers.put(tClass, new ConsumerDefinition<>(type, consumer));
             return this;
         }
 
@@ -183,37 +232,49 @@ public final class Receive<S> {
         public <M> MessageHandlingStep<S> onReceive(Class<M> tClass, MessageConsumer<M> consumer) {
             Objects.requireNonNull(tClass);
             Objects.requireNonNull(consumer);
-            return onReceive(tClass, (a, m) -> consumer.accept(m));
+            return onReceive(tClass, Type.READ_ONLY, (a, m) -> consumer.accept(m));
         }
 
         @Override
         public <M> MessageHandlingStep<S> onReceive(Class<M> tClass, MessageRunnable runnable) {
             Objects.requireNonNull(tClass);
             Objects.requireNonNull(runnable);
-            return onReceive(tClass, (a, m) -> runnable.run());
+            return onReceive(tClass, Type.READ_ONLY, (a, m) -> runnable.run());
+        }
+
+        @Override
+        public PostReceiveStep<S> orElse(
+                Type type,
+                MessageBiConsumer<S, Object> consumer) {
+            return addOrElse(type, consumer);
         }
 
         @Override
         public PostReceiveStep<S> orElse(MessageBiConsumer<S, Object> consumer) {
+            return addOrElse(Type.READ_WRITE, consumer);
+        }
+
+        private Builder<S> addOrElse(Type type, MessageBiConsumer<S, Object> consumer) {
+            Objects.requireNonNull(type);
             Objects.requireNonNull(consumer);
             if (this.orElseSet) {
                 throw new IllegalStateException("orElse is already set");
             }
             this.orElseSet = true;
-            this.orElseConsumer = consumer;
+            this.orElseConsumer = new ConsumerDefinition<>(type, consumer);
             return this;
         }
 
         @Override
         public PostReceiveStep<S> orElse(MessageConsumer<Object> consumer) {
             Objects.requireNonNull(consumer);
-            return orElse((a, m) -> consumer.accept(m));
+            return orElse(Type.READ_ONLY, (a, m) -> consumer.accept(m));
         }
 
         @Override
         public PostReceiveStep<S> orElse(MessageRunnable runnable) {
             Objects.requireNonNull(runnable);
-            return orElse((a, m) -> runnable.run());
+            return orElse(Type.READ_ONLY, (a, m) -> runnable.run());
         }
 
         @Override
@@ -247,7 +308,7 @@ public final class Receive<S> {
             };
         }
 
-        void accept(ActorContext<S> actorContext, M message) throws Exception;
+        void accept(MessageHandlingContext<S> messageHandlingContext, M message) throws Exception;
 
         default MessageBiConsumer<S, M> andThen(MessageBiConsumer<S, M> after) {
             Objects.requireNonNull(after);
