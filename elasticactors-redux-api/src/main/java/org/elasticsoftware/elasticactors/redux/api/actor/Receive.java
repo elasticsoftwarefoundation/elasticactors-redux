@@ -8,10 +8,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.elasticsoftware.elasticactors.redux.api.context.MessageHandlingContext;
 import org.springframework.lang.Nullable;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
+
+import static java.util.Objects.requireNonNull;
 
 @Slf4j
 @AllArgsConstructor
@@ -169,15 +169,22 @@ public final class Receive<S> {
             }
             this.built = true;
             return new Receive<>(
-                    Collections.unmodifiableMap(new LinkedHashMap<>(onReceiveConsumers)),
+                    onReceiveConsumers,
                     orElseConsumer,
                     preReceiveConsumer,
                     postReceiveConsumer);
         }
 
+        private void validateState() {
+            if (this.built) {
+                throw new IllegalStateException("Cannot modify a builder after calling build()");
+            }
+        }
+
         @Override
         public MessageHandlingStep<S> preReceive(MessageBiConsumer<S, Object> consumer) {
-            Objects.requireNonNull(consumer);
+            validateState();
+            requireNonNull(consumer);
             if (this.preReceiveConsumer != null) {
                 throw new IllegalStateException("preReceive is already set");
             }
@@ -187,13 +194,13 @@ public final class Receive<S> {
 
         @Override
         public MessageHandlingStep<S> preReceive(MessageConsumer<Object> consumer) {
-            Objects.requireNonNull(consumer);
+            requireNonNull(consumer);
             return this.preReceive((c, m) -> consumer.accept(m));
         }
 
         @Override
         public MessageHandlingStep<S> preReceive(MessageRunnable runnable) {
-            Objects.requireNonNull(runnable);
+            requireNonNull(runnable);
             return preReceive((a, m) -> runnable.run());
         }
 
@@ -216,9 +223,10 @@ public final class Receive<S> {
                 Class<M> tClass,
                 Type type,
                 MessageBiConsumer<S, M> consumer) {
-            Objects.requireNonNull(tClass);
-            Objects.requireNonNull(type);
-            Objects.requireNonNull(consumer);
+            validateState();
+            requireNonNull(tClass);
+            requireNonNull(type);
+            requireNonNull(consumer);
             if (onReceiveConsumers.containsKey(tClass)) {
                 throw new IllegalStateException(String.format(
                         "onReceive for class '%s' already set",
@@ -230,15 +238,13 @@ public final class Receive<S> {
 
         @Override
         public <M> MessageHandlingStep<S> onReceive(Class<M> tClass, MessageConsumer<M> consumer) {
-            Objects.requireNonNull(tClass);
-            Objects.requireNonNull(consumer);
+            requireNonNull(consumer);
             return onReceive(tClass, Type.READ_ONLY, (a, m) -> consumer.accept(m));
         }
 
         @Override
         public <M> MessageHandlingStep<S> onReceive(Class<M> tClass, MessageRunnable runnable) {
-            Objects.requireNonNull(tClass);
-            Objects.requireNonNull(runnable);
+            requireNonNull(runnable);
             return onReceive(tClass, Type.READ_ONLY, (a, m) -> runnable.run());
         }
 
@@ -255,8 +261,9 @@ public final class Receive<S> {
         }
 
         private Builder<S> addOrElse(Type type, MessageBiConsumer<S, Object> consumer) {
-            Objects.requireNonNull(type);
-            Objects.requireNonNull(consumer);
+            validateState();
+            requireNonNull(type);
+            requireNonNull(consumer);
             if (this.orElseSet) {
                 throw new IllegalStateException("orElse is already set");
             }
@@ -267,19 +274,20 @@ public final class Receive<S> {
 
         @Override
         public PostReceiveStep<S> orElse(MessageConsumer<Object> consumer) {
-            Objects.requireNonNull(consumer);
+            requireNonNull(consumer);
             return orElse(Type.READ_ONLY, (a, m) -> consumer.accept(m));
         }
 
         @Override
         public PostReceiveStep<S> orElse(MessageRunnable runnable) {
-            Objects.requireNonNull(runnable);
+            requireNonNull(runnable);
             return orElse(Type.READ_ONLY, (a, m) -> runnable.run());
         }
 
         @Override
         public BuildStep<S> postReceive(MessageBiConsumer<S, Object> consumer) {
-            Objects.requireNonNull(consumer);
+            validateState();
+            requireNonNull(consumer);
             if (this.postReceiveConsumer != null) {
                 throw new IllegalStateException("postReceive is already set");
             }
@@ -289,13 +297,13 @@ public final class Receive<S> {
 
         @Override
         public BuildStep<S> postReceive(MessageConsumer<Object> consumer) {
-            Objects.requireNonNull(consumer);
+            requireNonNull(consumer);
             return postReceive((a, m) -> consumer.accept(m));
         }
 
         @Override
         public BuildStep<S> postReceive(MessageRunnable runnable) {
-            Objects.requireNonNull(runnable);
+            requireNonNull(runnable);
             return preReceive((a, m) -> runnable.run());
         }
     }
@@ -311,7 +319,7 @@ public final class Receive<S> {
         void accept(MessageHandlingContext<S> messageHandlingContext, M message) throws Exception;
 
         default MessageBiConsumer<S, M> andThen(MessageBiConsumer<S, M> after) {
-            Objects.requireNonNull(after);
+            requireNonNull(after);
             return (c, m) -> {
                 accept(c, m);
                 after.accept(c, m);
@@ -325,7 +333,7 @@ public final class Receive<S> {
         void accept(M message) throws Exception;
 
         default MessageConsumer<M> andThen(MessageConsumer<M> after) {
-            Objects.requireNonNull(after);
+            requireNonNull(after);
             return m -> {
                 accept(m);
                 after.accept(m);
@@ -339,7 +347,7 @@ public final class Receive<S> {
         void run() throws Exception;
 
         default MessageRunnable andThen(MessageRunnable after) {
-            Objects.requireNonNull(after);
+            requireNonNull(after);
             return () -> {
                 run();
                 after.run();
