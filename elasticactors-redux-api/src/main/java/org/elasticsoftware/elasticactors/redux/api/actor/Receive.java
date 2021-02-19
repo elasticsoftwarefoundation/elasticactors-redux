@@ -30,8 +30,8 @@ public final class Receive<S> {
     private final MessageBiConsumer<S, Object> postReceiveConsumer;
 
     public enum Type {
-        READ_ONLY,
-        READ_WRITE
+        READ,
+        WRITE
     }
 
     @Value
@@ -41,8 +41,9 @@ public final class Receive<S> {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    public Type onReceive(MessageHandlingContext<S> messageHandlingContext, Object message) throws Exception {
-        Type consumerType = Type.READ_ONLY;
+    public Type onReceive(MessageHandlingContext<S> messageHandlingContext, Object message)
+            throws Exception {
+        Type consumerType = Type.READ;
         if (preReceiveConsumer != null) {
             preReceiveConsumer.accept(messageHandlingContext, message);
         }
@@ -97,6 +98,15 @@ public final class Receive<S> {
 
     public interface PreReceiveStep<S> extends MessageHandlingStep<S> {
 
+        /**
+         * Sets a step to be executed before message handling happen.
+         * <br>
+         * <strong>The type is always {@link Type#READ}.</strong>
+         * <br>
+         * Modifying the state in this step should be avoided at all cost.
+         * @param consumer
+         * @return
+         */
         MessageHandlingStep<S> preReceive(MessageBiConsumer<S, Object> consumer);
 
         MessageHandlingStep<S> preReceive(MessageConsumer<Object> consumer);
@@ -106,16 +116,16 @@ public final class Receive<S> {
 
     public interface MessageHandlingStep<S> extends PostReceiveStep<S> {
 
-        <M> MessageHandlingStep<S> onReceive(
+        <M> MessageHandlingStep<S> onMessage(
                 Class<M> tClass,
                 Type type,
                 MessageBiConsumer<S, M> consumer);
 
-        <M> MessageHandlingStep<S> onReceive(Class<M> tClass, MessageBiConsumer<S, M> consumer);
+        <M> MessageHandlingStep<S> onMessage(Class<M> tClass, MessageBiConsumer<S, M> consumer);
 
-        <M> MessageHandlingStep<S> onReceive(Class<M> tClass, MessageConsumer<M> consumer);
+        <M> MessageHandlingStep<S> onMessage(Class<M> tClass, MessageConsumer<M> consumer);
 
-        <M> MessageHandlingStep<S> onReceive(Class<M> tClass, MessageRunnable runnable);
+        <M> MessageHandlingStep<S> onMessage(Class<M> tClass, MessageRunnable runnable);
 
         PostReceiveStep<S> orElse(Type type, MessageBiConsumer<S, Object> consumer);
 
@@ -128,6 +138,15 @@ public final class Receive<S> {
 
     public interface PostReceiveStep<S> extends BuildStep<S> {
 
+        /**
+         * Sets a step to be executed after message handling has happened.
+         * <br>
+         * <strong>The type is always {@link Type#READ}.</strong>
+         * <br>
+         * Modifying the state in this step should be avoided at all cost.
+         * @param consumer
+         * @return
+         */
         BuildStep<S> postReceive(MessageBiConsumer<S, Object> consumer);
 
         BuildStep<S> postReceive(MessageConsumer<Object> consumer);
@@ -143,7 +162,7 @@ public final class Receive<S> {
 
         private final static ConsumerDefinition<?, Object> DEFAULT_OR_ELSE =
                 new ConsumerDefinition<>(
-                        Type.READ_ONLY,
+                        Type.READ,
                         (c, m) -> log.warn(
                                 "Actor '{}' received an unhandled message of type '{}'",
                                 c.getSelf().getSpec(),
@@ -205,7 +224,7 @@ public final class Receive<S> {
         }
 
         @Override
-        public <M> MessageHandlingStep<S> onReceive(
+        public <M> MessageHandlingStep<S> onMessage(
                 Class<M> tClass,
                 Type type,
                 MessageBiConsumer<S, M> consumer) {
@@ -213,10 +232,10 @@ public final class Receive<S> {
         }
 
         @Override
-        public <M> MessageHandlingStep<S> onReceive(
+        public <M> MessageHandlingStep<S> onMessage(
                 Class<M> tClass,
                 MessageBiConsumer<S, M> consumer) {
-            return addConsumer(tClass, Type.READ_WRITE, consumer);
+            return addConsumer(tClass, Type.WRITE, consumer);
         }
 
         private <M> Builder<S> addConsumer(
@@ -237,15 +256,15 @@ public final class Receive<S> {
         }
 
         @Override
-        public <M> MessageHandlingStep<S> onReceive(Class<M> tClass, MessageConsumer<M> consumer) {
+        public <M> MessageHandlingStep<S> onMessage(Class<M> tClass, MessageConsumer<M> consumer) {
             requireNonNull(consumer);
-            return onReceive(tClass, Type.READ_ONLY, (a, m) -> consumer.accept(m));
+            return onMessage(tClass, Type.READ, (a, m) -> consumer.accept(m));
         }
 
         @Override
-        public <M> MessageHandlingStep<S> onReceive(Class<M> tClass, MessageRunnable runnable) {
+        public <M> MessageHandlingStep<S> onMessage(Class<M> tClass, MessageRunnable runnable) {
             requireNonNull(runnable);
-            return onReceive(tClass, Type.READ_ONLY, (a, m) -> runnable.run());
+            return onMessage(tClass, Type.READ, (a, m) -> runnable.run());
         }
 
         @Override
@@ -257,7 +276,7 @@ public final class Receive<S> {
 
         @Override
         public PostReceiveStep<S> orElse(MessageBiConsumer<S, Object> consumer) {
-            return addOrElse(Type.READ_WRITE, consumer);
+            return addOrElse(Type.WRITE, consumer);
         }
 
         private Builder<S> addOrElse(Type type, MessageBiConsumer<S, Object> consumer) {
@@ -275,13 +294,13 @@ public final class Receive<S> {
         @Override
         public PostReceiveStep<S> orElse(MessageConsumer<Object> consumer) {
             requireNonNull(consumer);
-            return orElse(Type.READ_ONLY, (a, m) -> consumer.accept(m));
+            return orElse(Type.READ, (a, m) -> consumer.accept(m));
         }
 
         @Override
         public PostReceiveStep<S> orElse(MessageRunnable runnable) {
             requireNonNull(runnable);
-            return orElse(Type.READ_ONLY, (a, m) -> runnable.run());
+            return orElse(Type.READ, (a, m) -> runnable.run());
         }
 
         @Override
