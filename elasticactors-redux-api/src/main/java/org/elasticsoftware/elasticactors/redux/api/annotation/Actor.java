@@ -21,6 +21,4 @@ public @interface Actor {
     String type();
 
     String[] legacyTypes() default {};
-
-    Class<?> stateClass();
 }

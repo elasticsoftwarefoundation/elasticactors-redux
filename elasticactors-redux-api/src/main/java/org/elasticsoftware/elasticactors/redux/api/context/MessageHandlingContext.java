@@ -16,6 +16,4 @@ public interface MessageHandlingContext<S> {
     }
 
     S getState();
-
-    void setState(S object);
 }

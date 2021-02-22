@@ -4,9 +4,21 @@ import org.elasticsoftware.elasticactors.redux.api.system.ActorSystem;
 
 public interface ElasticActor<S> {
 
-    void postActivate(S state, ActorSystem actorSystem);
+    default S createInitialState(String actorId, Class<S> stateClass) throws Exception {
+        return stateClass.newInstance();
+    }
+
+    default void postCreate(S state, ActorSystem actorSystem) {
+        // Do nothing
+    }
+
+    default void postActivate(S state, ActorSystem actorSystem, String previousVersion) {
+        // Do nothing
+    }
 
     Receive<S> createReceive();
 
-    void preDestroy(S state, ActorSystem actorSystem);
+    default void preDestroy(S state, ActorSystem actorSystem) {
+        // Do nothing
+    }
 }

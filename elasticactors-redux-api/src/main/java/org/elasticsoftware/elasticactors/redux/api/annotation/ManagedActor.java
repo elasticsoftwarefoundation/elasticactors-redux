@@ -1,7 +1,5 @@
 package org.elasticsoftware.elasticactors.redux.api.annotation;
 
-import org.elasticsoftware.elasticactors.redux.api.state.InitialStateProvider;
-import org.elasticsoftware.elasticactors.redux.api.state.InitialStateProvider.Default;
 import org.springframework.core.annotation.AliasFor;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Indexed;
@@ -25,10 +23,6 @@ public @interface ManagedActor {
     String type();
 
     String[] legacyTypes() default {};
-
-    Class<?> stateClass();
-
-    Class<? extends InitialStateProvider> initialStateProvider() default Default.class;
 
     boolean exclusive() default true;
 }

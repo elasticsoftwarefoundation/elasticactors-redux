@@ -1,16 +1,15 @@
 package org.elasticsoftware.elasticactors.redux.api.state;
 
-public interface InitialStateProvider {
+public interface InitialStateProvider<S> {
 
-    class Default implements InitialStateProvider {
+    class Default<S> implements InitialStateProvider<S> {
 
         @Override
-        public Object create(String actorId, Class<?> stateClass)
+        public S create(String actorId, Class<S> stateClass)
                 throws ReflectiveOperationException {
             return stateClass.newInstance();
         }
     }
 
-    Object create(String actorId, Class<?> stateClass) throws ReflectiveOperationException;
-
+    S create(String actorId, Class<S> stateClass) throws ReflectiveOperationException;
 }

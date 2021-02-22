@@ -2,14 +2,17 @@ package org.elasticsoftware.elasticactors.redux.api.actor;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
-import lombok.NoArgsConstructor;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsoftware.elasticactors.redux.api.context.MessageHandlingContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static java.util.Objects.requireNonNull;
 
@@ -17,12 +20,17 @@ import static java.util.Objects.requireNonNull;
 @AllArgsConstructor
 public final class Receive<S> {
 
-    public static <S> Builder<S> builder() {
-        return new Builder<>();
+    public static <S, A extends ElasticActor<S>> Builder<S> builder(Class<A> actorClass) {
+        return new Builder<>(LoggerFactory.getLogger(actorClass));
     }
 
-    private final Map<Class<?>, ConsumerDefinition<S, ?>> onReceiveConsumers;
+    public static <S> Builder<S> builder(Logger log) {
+        return new Builder<>(log);
+    }
+
+    private final ConcurrentMap<Class<?>, ConsumerDefinition<S, ?>> onReceiveConsumers;
     private final ConsumerDefinition<S, Object> orElseConsumer;
+    private final ConsumerDefinition<S, Object> onUndeliverableConsumer;
 
     @Nullable
     private final MessageBiConsumer<S, Object> preReceiveConsumer;
@@ -43,10 +51,10 @@ public final class Receive<S> {
     @SuppressWarnings({"rawtypes", "unchecked"})
     public Type onReceive(MessageHandlingContext<S> messageHandlingContext, Object message)
             throws Exception {
-        Type consumerType = Type.READ;
         if (preReceiveConsumer != null) {
             preReceiveConsumer.accept(messageHandlingContext, message);
         }
+        Type consumerType = Type.READ;
         boolean consumed = false;
         Class<?> messageClass = message.getClass();
         ConsumerDefinition consumerDefinition = onReceiveConsumers.get(messageClass);
@@ -56,26 +64,8 @@ public final class Receive<S> {
             consumed = true;
         }
         if (!consumed) {
-            Class<?> closestClass = null;
-            for (Class<?> c : onReceiveConsumers.keySet()) {
-                if (c.isAssignableFrom(messageClass)) {
-                    if (closestClass == null || closestClass.isAssignableFrom(c)) {
-                        closestClass = c;
-                    } else if (!c.isAssignableFrom(closestClass)) {
-                        log.error(
-                                "Ambiguous handlers for class '{}': it extends both '{}' and "
-                                        + "'{}', but they're not part of the same chain of "
-                                        + "inheritance. Delegating this to orElse.",
-                                messageClass.getName(),
-                                closestClass.getName(),
-                                c.getName());
-                        closestClass = null;
-                        break;
-                    }
-                }
-            }
-            if (closestClass != null) {
-                consumerDefinition = onReceiveConsumers.get(closestClass);
+            consumerDefinition = resolveClosestConsumerDefinition(messageClass);
+            if (consumerDefinition != null) {
                 consumerDefinition.getConsumer().accept(messageHandlingContext, message);
                 consumerType = consumerDefinition.getType();
                 consumed = true;
@@ -89,6 +79,42 @@ public final class Receive<S> {
             postReceiveConsumer.accept(messageHandlingContext, message);
         }
         return consumerType;
+    }
+
+    public Type onUndeliverable(MessageHandlingContext<S> messageHandlingContext, Object message)
+            throws Exception {
+        onUndeliverableConsumer.getConsumer().accept(messageHandlingContext, message);
+        return onUndeliverableConsumer.getType();
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    @Nullable
+    private ConsumerDefinition resolveClosestConsumerDefinition(Class<?> messageClass) {
+        Class<?> closestClass = null;
+        for (Class<?> c : onReceiveConsumers.keySet()) {
+            if (c.isAssignableFrom(messageClass)) {
+                if (closestClass == null || closestClass.isAssignableFrom(c)) {
+                    closestClass = c;
+                } else if (!c.isAssignableFrom(closestClass)) {
+                    log.error(
+                            "Ambiguous handlers for class '{}': it extends both '{}' and "
+                                    + "'{}', but they're not part of the same chain of "
+                                    + "inheritance. Delegating this to orElse.",
+                            messageClass.getName(),
+                            closestClass.getName(),
+                            c.getName());
+                    closestClass = null;
+                    break;
+                }
+            }
+        }
+        if (closestClass != null) {
+            ConsumerDefinition closestConsumer = onReceiveConsumers.get(closestClass);
+            // Store the resolved consumer on the map so we don't have to try resolving it again
+            onReceiveConsumers.put(messageClass, closestConsumer);
+            return closestConsumer;
+        }
+        return null;
     }
 
     public interface BuildStep<S> {
@@ -136,7 +162,7 @@ public final class Receive<S> {
         PostReceiveStep<S> orElse(MessageRunnable runnable);
     }
 
-    public interface PostReceiveStep<S> extends BuildStep<S> {
+    public interface PostReceiveStep<S> extends OnUndeliverableStep<S> {
 
         /**
          * Sets a step to be executed after message handling has happened.
@@ -147,20 +173,30 @@ public final class Receive<S> {
          * @param consumer
          * @return
          */
-        BuildStep<S> postReceive(MessageBiConsumer<S, Object> consumer);
+        OnUndeliverableStep<S> postReceive(MessageBiConsumer<S, Object> consumer);
 
-        BuildStep<S> postReceive(MessageConsumer<Object> consumer);
+        OnUndeliverableStep<S> postReceive(MessageConsumer<Object> consumer);
 
-        BuildStep<S> postReceive(MessageRunnable runnable);
+        OnUndeliverableStep<S> postReceive(MessageRunnable runnable);
     }
 
-    @NoArgsConstructor(access = AccessLevel.PRIVATE)
+    public interface OnUndeliverableStep<S> extends BuildStep<S> {
+
+        BuildStep<S> onUndeliverable(Type type, MessageBiConsumer<S, Object> consumer);
+
+        BuildStep<S> onUndeliverable(MessageBiConsumer<S, Object> consumer);
+
+        BuildStep<S> onUndeliverable(MessageConsumer<Object> consumer);
+
+        BuildStep<S> onUndeliverable(MessageRunnable runnable);
+    }
+
+    @AllArgsConstructor(access = AccessLevel.PRIVATE)
     public final static class Builder<S> implements PreReceiveStep<S> {
 
-        private final Map<Class<?>, ConsumerDefinition<S, ?>> onReceiveConsumers =
-                new LinkedHashMap<>();
+        private final Logger log;
 
-        private final static ConsumerDefinition<?, Object> DEFAULT_OR_ELSE =
+        private final ConsumerDefinition<?, Object> DEFAULT_OR_ELSE =
                 new ConsumerDefinition<>(
                         Type.READ,
                         (c, m) -> log.warn(
@@ -168,34 +204,53 @@ public final class Receive<S> {
                                 c.getSelf().getSpec(),
                                 m.getClass().getName()));
 
+        private final ConsumerDefinition<?, Object> DEFAULT_ON_UNDELIVERABLE =
+                new ConsumerDefinition<>(
+                        Type.READ,
+                        (c, m) -> log.warn(
+                                "Could not deliver message of type '{}' from '{}' to '{}'",
+                                m.getClass().getName(),
+                                c.getSelf().getSpec(),
+                                c.getSender() != null ? c.getSender().getSpec() : null));
+
+        private final ConcurrentMap<Class<?>, ConsumerDefinition<S, ?>> onReceiveConsumers =
+                new ConcurrentHashMap<>();
+        private final AtomicReference<ConsumerDefinition<S, Object>> orElseConsumer =
+                new AtomicReference<>(defaultOrElse());
+        private final AtomicReference<ConsumerDefinition<S, Object>> onUndeliverableConsumer =
+                new AtomicReference<>(defaultOnUndeliverable());
+        private final AtomicReference<MessageBiConsumer<S, Object>> preReceiveConsumer =
+                new AtomicReference<>();
+        private final AtomicReference<MessageBiConsumer<S, Object>> postReceiveConsumer =
+                new AtomicReference<>();
+
+        private final AtomicBoolean built = new AtomicBoolean(false);
 
         @SuppressWarnings("unchecked")
-        private ConsumerDefinition<S, Object> orElseConsumer =
-                (ConsumerDefinition<S, Object>) DEFAULT_OR_ELSE;
+        private ConsumerDefinition<S, Object> defaultOrElse() {
+            return (ConsumerDefinition<S, Object>) DEFAULT_OR_ELSE;
+        }
 
-        @Nullable
-        private MessageBiConsumer<S, Object> preReceiveConsumer;
-        @Nullable
-        private MessageBiConsumer<S, Object> postReceiveConsumer;
-
-        private boolean orElseSet = false;
-        private boolean built = false;
+        @SuppressWarnings("unchecked")
+        private ConsumerDefinition<S, Object> defaultOnUndeliverable() {
+            return (ConsumerDefinition<S, Object>) DEFAULT_ON_UNDELIVERABLE;
+        }
 
         @Override
         public Receive<S> build() {
-            if (this.built) {
+            if (this.built.getAndSet(true)) {
                 throw new IllegalStateException("Can only call the build method once");
             }
-            this.built = true;
             return new Receive<>(
                     onReceiveConsumers,
-                    orElseConsumer,
-                    preReceiveConsumer,
-                    postReceiveConsumer);
+                    orElseConsumer.get(),
+                    onUndeliverableConsumer.get(),
+                    preReceiveConsumer.get(),
+                    postReceiveConsumer.get());
         }
 
         private void validateState() {
-            if (this.built) {
+            if (this.built.get()) {
                 throw new IllegalStateException("Cannot modify a builder after calling build()");
             }
         }
@@ -204,17 +259,16 @@ public final class Receive<S> {
         public MessageHandlingStep<S> preReceive(MessageBiConsumer<S, Object> consumer) {
             validateState();
             requireNonNull(consumer);
-            if (this.preReceiveConsumer != null) {
+            if (!this.preReceiveConsumer.compareAndSet(null, consumer)) {
                 throw new IllegalStateException("preReceive is already set");
             }
-            this.preReceiveConsumer = consumer;
             return this;
         }
 
         @Override
         public MessageHandlingStep<S> preReceive(MessageConsumer<Object> consumer) {
             requireNonNull(consumer);
-            return this.preReceive((c, m) -> consumer.accept(m));
+            return preReceive((c, m) -> consumer.accept(m));
         }
 
         @Override
@@ -228,31 +282,26 @@ public final class Receive<S> {
                 Class<M> tClass,
                 Type type,
                 MessageBiConsumer<S, M> consumer) {
-            return addConsumer(tClass, type, consumer);
+            validateState();
+            requireNonNull(tClass);
+            requireNonNull(type);
+            requireNonNull(consumer);
+            onReceiveConsumers.compute(tClass, (key, old) -> {
+                if (old != null) {
+                    throw new IllegalStateException(String.format(
+                            "onReceive for class '%s' already set",
+                            key.getName()));
+                }
+                return new ConsumerDefinition<>(type, consumer);
+            });
+            return this;
         }
 
         @Override
         public <M> MessageHandlingStep<S> onMessage(
                 Class<M> tClass,
                 MessageBiConsumer<S, M> consumer) {
-            return addConsumer(tClass, Type.WRITE, consumer);
-        }
-
-        private <M> Builder<S> addConsumer(
-                Class<M> tClass,
-                Type type,
-                MessageBiConsumer<S, M> consumer) {
-            validateState();
-            requireNonNull(tClass);
-            requireNonNull(type);
-            requireNonNull(consumer);
-            if (onReceiveConsumers.containsKey(tClass)) {
-                throw new IllegalStateException(String.format(
-                        "onReceive for class '%s' already set",
-                        tClass.getName()));
-            }
-            onReceiveConsumers.put(tClass, new ConsumerDefinition<>(type, consumer));
-            return this;
+            return onMessage(tClass, Type.WRITE, consumer);
         }
 
         @Override
@@ -271,24 +320,20 @@ public final class Receive<S> {
         public PostReceiveStep<S> orElse(
                 Type type,
                 MessageBiConsumer<S, Object> consumer) {
-            return addOrElse(type, consumer);
+            validateState();
+            requireNonNull(type);
+            requireNonNull(consumer);
+            if (!this.orElseConsumer.compareAndSet(
+                    defaultOrElse(),
+                    new ConsumerDefinition<>(type, consumer))) {
+                throw new IllegalStateException("orElse is already set");
+            }
+            return this;
         }
 
         @Override
         public PostReceiveStep<S> orElse(MessageBiConsumer<S, Object> consumer) {
-            return addOrElse(Type.WRITE, consumer);
-        }
-
-        private Builder<S> addOrElse(Type type, MessageBiConsumer<S, Object> consumer) {
-            validateState();
-            requireNonNull(type);
-            requireNonNull(consumer);
-            if (this.orElseSet) {
-                throw new IllegalStateException("orElse is already set");
-            }
-            this.orElseSet = true;
-            this.orElseConsumer = new ConsumerDefinition<>(type, consumer);
-            return this;
+            return orElse(Type.WRITE, consumer);
         }
 
         @Override
@@ -304,26 +349,55 @@ public final class Receive<S> {
         }
 
         @Override
-        public BuildStep<S> postReceive(MessageBiConsumer<S, Object> consumer) {
+        public OnUndeliverableStep<S> postReceive(MessageBiConsumer<S, Object> consumer) {
             validateState();
             requireNonNull(consumer);
-            if (this.postReceiveConsumer != null) {
+            if (!this.postReceiveConsumer.compareAndSet(null, consumer)) {
                 throw new IllegalStateException("postReceive is already set");
             }
-            this.postReceiveConsumer = consumer;
             return this;
         }
 
         @Override
-        public BuildStep<S> postReceive(MessageConsumer<Object> consumer) {
+        public OnUndeliverableStep<S> postReceive(MessageConsumer<Object> consumer) {
             requireNonNull(consumer);
             return postReceive((a, m) -> consumer.accept(m));
         }
 
         @Override
-        public BuildStep<S> postReceive(MessageRunnable runnable) {
+        public OnUndeliverableStep<S> postReceive(MessageRunnable runnable) {
             requireNonNull(runnable);
-            return preReceive((a, m) -> runnable.run());
+            return postReceive((a, m) -> runnable.run());
+        }
+
+        @Override
+        public Builder<S> onUndeliverable(Type type, MessageBiConsumer<S, Object> consumer) {
+            validateState();
+            requireNonNull(type);
+            requireNonNull(consumer);
+            if (!this.onUndeliverableConsumer.compareAndSet(
+                    defaultOnUndeliverable(),
+                    new ConsumerDefinition<>(type, consumer))) {
+                throw new IllegalStateException("onUndeliverable is already set");
+            }
+            return this;
+        }
+
+        @Override
+        public BuildStep<S> onUndeliverable(MessageBiConsumer<S, Object> consumer) {
+            return onUndeliverable(Type.WRITE, consumer);
+        }
+
+        @Override
+        public BuildStep<S> onUndeliverable(MessageConsumer<Object> consumer) {
+            requireNonNull(consumer);
+            return onUndeliverable(Type.READ, (a, m) -> consumer.accept(m));
+        }
+
+        @Override
+        public BuildStep<S> onUndeliverable(MessageRunnable runnable) {
+            requireNonNull(runnable);
+            return onUndeliverable(Type.READ, (a, m) -> runnable.run());
         }
     }
 
@@ -344,6 +418,22 @@ public final class Receive<S> {
                 after.accept(c, m);
             };
         }
+
+        default MessageBiConsumer<S, M> andThen(MessageConsumer<M> after) {
+            requireNonNull(after);
+            return (c, m) -> {
+                accept(c, m);
+                after.accept(m);
+            };
+        }
+
+        default MessageBiConsumer<S, M> andThen(MessageRunnable after) {
+            requireNonNull(after);
+            return (c, m) -> {
+                accept(c, m);
+                after.run();
+            };
+        }
     }
 
     @FunctionalInterface
@@ -356,6 +446,14 @@ public final class Receive<S> {
             return m -> {
                 accept(m);
                 after.accept(m);
+            };
+        }
+
+        default MessageConsumer<M>  andThen(MessageRunnable after) {
+            requireNonNull(after);
+            return m -> {
+                accept(m);
+                after.run();
             };
         }
     }
