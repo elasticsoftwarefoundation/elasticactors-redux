@@ -1,4 +1,4 @@
-package org.elasticsoftware.elasticactors.redux.api.annotation;
+package org.elasticsoftware.elasticactors.redux.api.annotation.message;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;

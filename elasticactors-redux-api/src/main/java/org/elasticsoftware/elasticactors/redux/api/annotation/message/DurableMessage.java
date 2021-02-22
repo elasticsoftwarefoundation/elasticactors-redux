@@ -1,4 +1,4 @@
-package org.elasticsoftware.elasticactors.redux.api.annotation;
+package org.elasticsoftware.elasticactors.redux.api.annotation.message;
 
 import org.springframework.core.annotation.AliasFor;
 
@@ -11,8 +11,8 @@ import java.lang.annotation.Target;
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
-@Message(type = "", durable = false)
-public @interface TransientMessage {
+@Message(type = "")
+public @interface DurableMessage {
 
     @AliasFor(attribute = "type", annotation = Message.class)
     String type();
