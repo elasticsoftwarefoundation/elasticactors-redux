@@ -4,12 +4,10 @@ import org.elasticsoftware.elasticactors.redux.api.actors.TestActor;
 import org.elasticsoftware.elasticactors.redux.api.actors.TestCachedActor;
 import org.elasticsoftware.elasticactors.redux.api.actors.TestManagedActor;
 import org.elasticsoftware.elasticactors.redux.api.actors.TestServiceActor;
-import org.elasticsoftware.elasticactors.redux.api.actors.state.TestState;
 import org.elasticsoftware.elasticactors.redux.api.annotation.Actor;
 import org.elasticsoftware.elasticactors.redux.api.annotation.CachedActor;
 import org.elasticsoftware.elasticactors.redux.api.annotation.ManagedActor;
 import org.elasticsoftware.elasticactors.redux.api.annotation.ServiceActor;
-import org.elasticsoftware.elasticactors.redux.api.state.InitialStateProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.stereotype.Component;
 
@@ -27,7 +25,6 @@ class AnnotationsTest {
         Actor actor = findAnnotation(TestActor.class, Actor.class);
         assertNotNull(actor);
         assertEquals("testActorType", actor.type());
-        assertEquals(TestState.class, actor.stateClass());
         assertArrayEquals(
                 new String[]{"legacyTestActorType1", "legacyTestActorType2"},
                 actor.legacyTypes());
@@ -63,8 +60,6 @@ class AnnotationsTest {
         assertNotNull(actor);
         assertArrayEquals(new String[]{"testManagedActorId"}, actor.id());
         assertEquals("testManagedActorType", actor.type());
-        assertEquals(TestState.class, actor.stateClass());
-        assertEquals(InitialStateProvider.Default.class, actor.initialStateProvider());
         assertFalse(actor.exclusive());
         assertArrayEquals(
                 new String[]{"legacyTestManagedActorType1", "legacyTestManagedActorType2"},
@@ -84,8 +79,6 @@ class AnnotationsTest {
         assertNotNull(actor);
         assertArrayEquals(new String[]{"testCachedActorId"}, actor.id());
         assertEquals("testCachedActorType", actor.type());
-        assertEquals(TestState.class, actor.stateClass());
-        assertEquals(InitialStateProvider.Default.class, actor.initialStateProvider());
         assertArrayEquals(
                 new String[]{"legacyTestCachedActorType1", "legacyTestCachedActorType2"},
                 actor.legacyTypes());
