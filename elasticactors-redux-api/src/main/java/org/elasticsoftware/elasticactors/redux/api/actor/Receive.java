@@ -3,7 +3,6 @@ package org.elasticsoftware.elasticactors.redux.api.actor;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Value;
-import lombok.extern.slf4j.Slf4j;
 import org.elasticsoftware.elasticactors.redux.api.context.MessageHandlingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +15,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static java.util.Objects.requireNonNull;
 
-@Slf4j
 @AllArgsConstructor
 public final class Receive<S> {
 
@@ -28,6 +26,7 @@ public final class Receive<S> {
         return new Builder<>(log);
     }
 
+    private final Logger log;
     private final ConcurrentMap<Class<?>, ConsumerDefinition<S, ?>> onReceiveConsumers;
     private final ConsumerDefinition<S, Object> orElseConsumer;
     private final ConsumerDefinition<S, Object> onUndeliverableConsumer;
@@ -242,6 +241,7 @@ public final class Receive<S> {
                 throw new IllegalStateException("Can only call the build method once");
             }
             return new Receive<>(
+                    log,
                     onReceiveConsumers,
                     orElseConsumer.get(),
                     onUndeliverableConsumer.get(),
